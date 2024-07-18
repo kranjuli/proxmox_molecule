@@ -1,0 +1,344 @@
+:reftext: Szenarien
+:navtitle: Szenarien
+
+= {reftext}
+
+In dieser Dokumentation wird die Funktion und der Aufbau von Molecule Szenarien vorgestellt.
+Es wird beschrieben wie Molecule beim Testen vorgeht.
+Außerdem werden die einzelnen Testschritte genauer erläutert.
+
+Der Ablauf eines Molecule Testlaufs wird durch sog. Szenarien definiert.
+Ein Szenario ist also eine Reihe an Schritten, die bei einem Molecule Test durchgeführt werden.
+Beim Ausführen des Befehls `molecule test` wird das default Szenario durchlaufen.
+Andere Szenarien können mit dem Befehl `molecule test -s <szenario-name>` gestartet werden.
+
+== Ordnerstruktur
+
+Eine minimale Ordnerstruktur eines Szenarios für das Testen innerhalb eines Docker Containers sieht wie folgt aus:
+
+[source=txt]
+----
+|--<ansible role or collection name>
+    |--molecule
+        |--<scenario name>
+            |--converge.yml
+            |--create.yml
+            |--destroy.yml
+            |--molecule.yml
+            |--verify.yml
+----
+
+Die einzelnen Dateien sind Ansible Playbooks, die für die Integrationstests verwendet werden und entsprechen den
+ausgeführten Schritten des Szenarios (siehe <<Default>> Abschnitt).
+
+[IMPORTANT]
+====
+Zur Ausführung von Molecule Tests in Docker Containern sind diese Playbooks entsprechend diesem
+link:https://ansible.readthedocs.io/projects/molecule/examples/docker/[Beispiel aus der Molecule Dokumentation]
+zu befüllen.
+====
+
+Die gewünschte Funktionalität des Integrationstests muss vom Benutzer selbst in den Dateien `molecule.yml`, `converge.yml`
+und `verify.yml` implementiert werden. Diese Dateien werden im Folgenden genauer beschrieben.
+
+=== molecule.yml
+
+Die `molecule.yml` Datei wird für die Konfiguration eines Szenarios verwendet.
+Eine Angabe aller Möglichkeiten zur Konfiguration sind in der
+link:https://ansible.readthedocs.io/projects/molecule/configuration/[Molecule Dokumentation] aufgeführt.
+
+Eine beispielhafte Konfiguration könnte so aussehen:
+
+.Beispielhafte molecule.yml Datei
+[source=yaml]
+----
+prerun: false <1>
+dependency: <2>
+  enable: false
+driver: <3>
+  name: default
+platforms: <4>
+  - name: "${ANSIBLE_LIMIT}"
+
+provisioner: <5>
+  name: ansible
+  # molecule ansible configs
+  config_options: <6>
+    defaults:
+      vault_identity_list: "${VAULT_PASSWORD_FILE}"
+      interpreter_python: "auto_silent"
+      localhost_warning: false
+      timeout: "180"
+      force_handlers: true
+      stdout_callback: "community.general.yaml"
+      display_skipped_hosts: false
+      display_ok_hosts: true
+      host_key_checking: false
+      remote_user: root
+    ssh_connection:
+      pipelining: true
+      ssh_args: "-o ServerAliveInterval=100 -o ControlMaster=auto -o ControlPersist=60m -o PreferredAuthentications=publickey"
+  # inventory of molecule
+  inventory: <7>
+    links:
+      hosts: ../../../../inventory/infrastructure/hosts.yml
+      group_vars: ../../../../inventory/infrastructure/group_vars
+      host_vars: ../../../../inventory/infrastructure/host_vars
+verifier: <8>
+  name: ansible
+----
+
+Hierbei werden folgende Einstellungen vorgenommen:
+
+.Vorgenommene Einstellungen in der molecule.yml Datei
+[%header, cols="1,2,4"]
+|===
+| Nummer
+| Name
+| Beschreibung
+
+|1
+|prerun
+|Eigenständige Installation aus der galaxy.yaml Datei kann hier deaktiviert werden.
+Hilfreich für die Ausführung in der Pipeline, wo kein Zugriff auf Ansible Galaxy besteht.
+
+|2
+|dependency
+|Installation von Abhängigkeiten (sollte nur für das lokale Testen enabled werden)
+
+|3
+|driver
+|Zu verwendender Service für die Testinstanzen
+
+|4
+|platforms
+|Liste der zu erstellenden Instanzen. Mehrere Angaben mit unterschiedlichen Images sind möglich.
+
+|5
+|provisioner
+|Angabe der Services für die Durchführung der Integrationstest (default=ansible)
+
+|6
+|config_options
+|Eine Liste an Parametern, bei der Ausführung an Molecule übergeben wird.
+Das Einbinden der globalen Ansible config (z.B: aus dem `Config` Repo im EVITA Bereich) ist unmöglich, weil Molecule die Properties `defaults` oder `ssh_connection` nicht akzeptiert.
+
+|7
+|inventory
+|Inventory, welches von Molecule bei der Durchführung der Integrationstests verwendet wird. Man kann ein Inventory direkt in der `molecule.yml` Datei erstellen oder ein externes Verzeichnis verlinken.
+
+|8
+|verifier
+|Test-Rolle, die von Molecule ausgeführt werden soll. Es gibt 2 Rollen: `ansible` oder `testinfra`. Wir benutzen die Rolle `ansible`, damit Molecule das Playbook `verify.yml`ausführt.
+|===
+
+=== Inventory von Molecule
+
+In der `molecule.yml` Datei wurde die Verwendung des link:https://git.tech.rz.db.de/evita/ansible/inventory[EVITA Inventory] konfiguriert.
+Änderungen an der Konfiguration der zu erstellenden VM müssen aus diesem Grund 
+dort eingepflegt werden.
+
+=== destroy.yml
+
+Das Playbook `destroy.yml` wird zum Zerstören und Entfernen der Testinstanz verwendet, nachdem die Rolle getestet wurde.
+
+Um eine Proxmox-VM zu zerstören, wird die Ansible-Rolle `evita.proxmox.vm_remove` verwendet. Zum Löschen müssen die
+Proxmox Credentials und die ID der zu löschenden VM mit angegeben werden.
+
+Das Playbook `destroy.yml sieht wie folgt aus:
+[source=yaml]
+----
+---
+- name: Destroy
+  hosts: "{{ lookup('env', 'ANSIBLE_LIMIT') }}"
+  gather_facts: false
+  pre_tasks:
+    - name: Inject promox credentials
+      ansible.builtin.include_tasks:
+        file: tasks/secret_injection.yml
+
+  roles:
+    - role: evita.proxmox.vm_remove
+      vm_remove_id: "{{ machine_id }}"
+----
+
+=== create.yml
+
+Diese Playbook-Datei wird zum Erstellen der Testinstanz, die zum Testen der Ansible-Rolle erforderlich ist, verwendet.
+
+Das Playbook `create.yml` verwendet bei der Ausführung die Proxmox Credentials und ruft die Ansible Rolle `evita.proxmox.vm_run` auf, um die Proxmox-VM zu erstellen.
+
+Das Playbook `create.yml` sieht wie folgt aus:
+[source=yaml]
+----
+---
+- name: Create
+  hosts: "{{ lookup('env', 'ANSIBLE_LIMIT') }}"
+  gather_facts: false
+  tasks:
+    - name: Inject promox credentials
+      ansible.builtin.include_tasks:
+        file: tasks/secret_injection.yml
+
+    - name: Create an intermediate vm from a template
+      ansible.builtin.include_role:
+        name: evita.proxmox.vm_run
+      vars:
+        vm_run_target_id: "{{ machine_id }}"
+        vm_run_source_id: "{{ source_machine_id }}"
+
+    - name: Repository config is set
+      ansible.builtin.include_role:
+        name: evita.basic_setup.repositories
+
+    # create local users if any defined
+    - name: Additional users are created
+      ansible.builtin.include_role:
+        name: evita.basic_setup.user_creation
+      vars:
+        user_creation_user_name: "{{ ansible_user_name_encrypted }}"
+        user_creation_user_key_public: "{{ ansible_user_key_public_encrypted }}"
+        user_creation_user_in_sudo: true
+----
+
+=== converge.yml
+
+Das `converge.yml` Playbook ist zuständig für das Ausführen der gewünschten Rollen/Collections gegen die Testinstanz(en).
+Um einzelne Rollen zu testen, können diese in einem zusätzlichen Task in der `converge.yml` Datei importiert werden.
+
+.Import von zu testenden Rollen in der converge.yml
+[source=yaml]
+----
+- name: Converge
+  hosts: molecule
+  # We disable gather facts because it would fail due to our container not
+  # having python installed. This will not prevent use from running 'raw'
+  # commands. Most molecule users are expected to use containers that already
+  # have python installed in order to avoid notable delays installing it.
+  gather_facts: false
+  tasks:
+    - name: Include role
+      import_role:
+        name: evita.pi_platform.status_information
+----
+
+=== verify.yml
+
+Das `verify.yml` Playbook wird von Molecule verwendet, um die eigentlichen Integrationstests durchzuführen.
+Hier können eigene Testfälle definiert werden. Bei einem aufgetretenen Fehler in diesem Schritt scheitert die gesamte
+Ausführung eines Molecule Testlaufs.
+
+Das eigentlich vorgesehene Vorgehen von Molecule ist die Erstellung eines atomaren Tests für jede einzelne Rolle.
+Das würde bedeuten, dass für jede einzelne Rolle ein eigener `molecule` Ordner erstellt wird mit entsprechenden Szenarien,
+die nur diese Rolle testen.
+Der Nachteil hierbei ist allerdings, dass das Zusammenspiel der Rollen bei der Testdurchführung nicht berücksichtigt wird. 
+Außerdem entstehen hier bei der Erstellung der einzelnen Konfigurationsdateien Dopplungen.
+Auch bei der Ausführung der Test würde für jede Rolle ein eigener Container gestartet werden.
+Aus diesen Gründen werden die Integrationstests in einem einzigen Szenario gebündelt.
+
+Beim Testen einer ganzen Collection würde die `verify.yml` bei diesem Vorgehen jedoch sehr lang werden. 
+Deshalb bietet es sich an, die Testfälle der einzelnen Rollen in eigene Dateien aufzuteilen und diese dann in der
+`verify.yml` zu importieren. Hierfür kann zum Beispiel ein Unterordner `verification` im Szenario erstellt werden, der
+die einzelnen Dateien für die zu testenden Rollen enthält. Die `verify.yml` könnte dann wie folgt aussehen.
+
+.Beispielhafte verify.yml Datei
+[source=yaml]
+----
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Include verification file for status_information role
+      ansible.builtin.include_tasks:
+        file: verification/verify-status_information.yml
+----
+
+Die eigentlichen Testfälle werden dann als separate Dateien im Unterordner `verification` abgelegt.
+Ein Test wird üblicherweise mit einem `ansible.builtin.assert` Statement durchgeführt.
+Der Inhalt der `verification/verify-status_information.yml`-Datei könnte dann folgendermaßen aussehen.
+
+.Beispielhafter Testfall
+[source=yaml]
+----
+- name: Register status information file
+  stat:
+    path: /etc/profile.d/motd_script.sh
+  register: stat_result
+
+- name: Check if file exists
+  ansible.builtin.assert:
+    that: stat_result.stat.exists
+----
+
+== Szenariotypen
+=== Default
+
+Die einzelnen Schritte des Default Szenarios sollen hier dargestellt werden. Beim Ausführen des Befehls `molecule test`
+werden die einzelnen Schritte in der gezeigten Reihenfolge ausgeführt.
+
+.Testsequenz des Default Szenarios
+[%header, cols="1,2,4"]
+|===
+| Reihenfolge
+| Name
+| Beschreibung
+
+| 1
+| dependency
+| Installation von Abhängigkeiten.
+
+| 2
+| cleanup
+| Eventuell noch vorhandene Artefakte aus vorausgegangenen Testläufen entfernen.
+
+| 3
+| destroy
+|  Eventuell noch vorhandene Testinstanzen aus vorausgegangenen Testläufen entfernen.
+
+| 4
+| syntax
+| Überprüfung der Syntax.
+
+| 5
+| create
+| Die gewünschten Testinstanzen erstellen.
+
+| 6
+| prepare
+| Vorbereitung für Testlauf.
+
+| 7
+| converge
+| Ausführen der zu testende Rollen oder Collections gegen die Testinstanz mit dem `converge.yml`-Playbook.
+
+| 8
+| idempotence
+| Erneutes Ausführen der selben Rollen oder Collections gegen die Testinstanz, um zu überprüfen, ob dabei Änderungen
+gemacht werden. Ein wiederholtes Ausführen von Ansible Rollen/Collections soll beim zweiten Durchlauf keine Änderungen vornehmen.
+
+| 9
+| side_effect
+| Testen von Nebeneffekten mit dem `side_effect.yml` playbook
+
+| 10
+| verify
+| Ausführen der eigentlichen Integrationstests im `verify.yml` playbook
+
+| 11
+| cleanup
+| Artefakte entfernen.
+
+| 12
+| destroy
+| Testinstanzen löschen.
+
+|===
+
+=== Custom Szenarien
+
+Für die Erstellung von custom Szenarien kann ein weiteres Unterverzeichnis, neben dem des Default-Szenarios erstellt und
+mit den gewünschten Playbooks und Einstellungen in der `molecule.yml` gefüllt werden.
+
+'''
+
+link:https://git.tech.rz.db.de/evita/ansible/molecule/-/blob/main/doc/modules/molecule/pages/scenario.adoc[Page-Source in GitLab]

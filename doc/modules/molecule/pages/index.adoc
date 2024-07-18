@@ -1,0 +1,23 @@
+:reftext: Molecule
+:navtitle: Molecule
+
+= {reftext}
+
+Molecule ist ein Framework, welches Integrationstests für Ansible ermöglicht.
+
+Die Dokumentation beinhaltet die folgenden Abschnitte.
+
+. xref:molecule:setup.adoc[Setup von Molecule für das lokale Testen oder die Verwendung in einer Gitlab Pipeline]
+. xref:molecule:scenario.adoc[Erklärung zu Molecule Szenarien]
+. xref:molecule:workflow.adoc[Benutzung von Molecule während der Entwicklung von Ansible Rollen]
+. xref:molecule:container.adoc[Wissenssammlung zur Verwendung von Molecule in Verbindung mit Containern als Testinstanzen]
+. xref:molecule:peculiarities.adoc[Sammlung der Eigenheiten von Molecule]
+
+Weiterführende Links:
+
+* link:https://ansible.readthedocs.io/projects/molecule/[Molecule Dokumentation]
+* link:https://github.com/networktocode/interop2020-ansible-molecule[Molecule for Testing Network Automation Repository]
+
+'''
+
+link:https://git.tech.rz.db.de/evita/ansible/molecule/-/blob/main/doc/modules/molecule/pages/index.adoc[Page-Source in GitLab]

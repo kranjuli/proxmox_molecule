@@ -1,0 +1,12 @@
+---
+- name: Destroy VM test instance
+  hosts: "{{ lookup('env', 'ANSIBLE_LIMIT') }}"
+  gather_facts: false
+  pre_tasks:
+    - name: Inject promox credentials
+      ansible.builtin.include_tasks:
+        file: tasks/secret_injection.yml
+
+  roles:
+    - role: evita.proxmox.vm_remove
+      vm_remove_id: "{{ machine_id }}"

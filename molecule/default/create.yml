@@ -1,0 +1,21 @@
+---
+- name: Create VM test instance
+  hosts: "{{ lookup('env', 'ANSIBLE_LIMIT') }}"
+  gather_facts: false
+  pre_tasks:
+    - name: Inject promox credentials
+      ansible.builtin.include_tasks:
+        file: tasks/secret_injection.yml
+
+  roles:
+    # Create an intermediate vm from a template
+    - role: evita.proxmox.vm_run
+      vm_run_target_id: "{{ machine_id }}"
+      vm_run_source_id: "{{ source_machine_id }}"
+    # config repositories
+    - role: evita.basic_setup.repositories
+    # create local users
+    - role: evita.basic_setup.user_creation
+      user_creation_user_name: "{{ ansible_user_name_encrypted }}"
+      user_creation_user_key_public: "{{ ansible_user_key_public_encrypted }}"
+      user_creation_user_in_sudo: true

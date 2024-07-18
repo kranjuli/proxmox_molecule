@@ -1,0 +1,61 @@
+:reftext: Eigenheiten
+:navtitle: Eigenheiten
+
+= {reftext}
+
+Bei der ersten Einrichtung von Molecule sind einige Eigenheiten aufgefallen, die eventuell für zukünftige Weiterentwicklungen interessant sind. Das gewonnene Wissen wird hier festgehalten.
+
+* Molecule ist eine Art Wrapper für Ansible. In einem vollen Molecule Testlauf werden mehrere Playbooks aufgerufen, die die verschiedenen Testschritte abbilden. Es besteht keine Möglichkeit zu kontrollieren welche Variablen/Flags zu den Playbooks durchgereicht werden. Allgemein erlaubt Molecule die Übergabe von Parametern nicht, wie das von Ansible beim Aufruf über die Kommandozeile bekannt ist. Es ist also z.B. nicht möglich `extra-vars` an das `create.yml` oder `destroy.yml` Playbook zu übergeben. Auch das Debugging ist weniger intuitiv. Die gewohnte Option `-vvv` wird nicht unterstützt. Hierfür muss folgender Eintrag in der `molecule.yml` vorgenommen werden
++
+.molecule.yml
+[source,yaml]
+----
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_VERBOSITY: 3
+----
++
+* Die Verwendung der link:https://git.tech.rz.db.de/evita/ansible/config[globalen Ansible config] aus dem EVITA Bereich ist nicht ohne weiteres mit Molecule verwendbar. Einige Variablen, die dort definiert sind, werden von Molecule nicht akzeptiert. Eine Alternative stellt eine `.env` Datei dar, die an Molecule übergeben werden kann. Hier können Umgebungsvariablen definiert werden.
+* Innerhalb der `molecule.yml` kann ein link:https://ansible.readthedocs.io/projects/molecule/configuration/#molecule.provisioner.ansible.Ansible.inventory[eigenes Inventory] erstellt werden. Alternativ kann hier eine externe Datei verlinkt werden.
++
+.molecule.yml
+[source,yaml]
+----
+provisioner:
+  name: ansible
+  inventory:
+  links:
+      hosts: ../../../inventory/hosts
+      group_vars: ../../../inventory/group_vars/
+      host_vars: ../../../inventory/host_vars/
+----
++
+Hier ist darauf zu achten, dass Molecule Fehler in der Einrückung innerhalb der eingebundenen Dateien nicht erkennt. Diese fehlerhaften Dateien werden ohne Rückgabe einer Fehlermeldung verarbeitet.
+* In der `molecule.yml` gibt es die Option Ansible Galaxy Abhängigkeiten anzugeben.
++
+.molecule.yml
+[source,yaml]
+----
+dependency:
+  name: galaxy
+  enabled: false
+  options:
+    requirements-file: requirements.yml
+----
++
+Aus irgendeinem Grund lädt Molecule die angegebenen Abhängigkeiten aus dem Internet herunter, selbst wenn die eine Artifactory Quelle angegeben wird. Bei der Ausführung in der Pipeline schlägt das fehl. Die Option `dependency.enabled` muss deshalb auf `false` gesetzt werden. Außerdem hat die Option `dependency.name: galaxy` Probleme bereitet. Falls die Verwendung der `dependency` Option gewünscht ist (z.B. für die lokale Ausführung), kann stattdessen die folgende Konfiguration verwendet werden.
++
+.molecule.yml
+[source,yaml]
+----
+dependency:
+  name: shell
+  enabled: true
+  command: ansible-galaxy install -r requirements.yml
+----
++
+
+'''
+
+link:https://git.tech.rz.db.de/evita/ansible/molecule/-/blob/main/doc/modules/molecule/pages/peculiarities.adoc[Page-Source in GitLab]

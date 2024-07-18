@@ -1,0 +1,303 @@
+:reftext: Setup
+:navtitle: Setup
+
+= {reftext}
+
+Diese Dokumentation beschreibt die Vorgehensweise und Voraussetzungen bei der Einrichtung von Molecule zum lokalen Testen
+oder der Durchführung von Tests in einer Gitlab Pipeline.
+
+NOTE: Eine genaue Beschreibung der Datei `molecule.yml`, `comverge.yml`, `verify.yml` findet sich xref:molecule:scenario.adoc[hier]
+
+== Initiale Einrichtung
+
+Für die Integration von Molecule ins Projekt sollen folgende Schritte durchgeführt werden:
+
+. Molecule- und dessen notwendige Repos ins Projekt via Git - Submodule einbinden
+. Konfig-Verzeichnisse für Molecule-Test anlegen
+. Proxmox-VM-ID und IP der zu erstellenden Testinstanz in das Inventory eintragen
+. Extra-Einrichtung für lokalen Test:
+** Proxmox Credentials für lokalen Test erstellen
+** Credentials für lokalen Test in den Environment Variablen eintragen
+
+=== 1. Molecule und notwendige Komponenten ins Projekt via Git - Submodule einbinden
+
+Folgender Repository muss vor dem Setup von Molecule ins Projekt via Git - Submodule eingebunden werden:
+
+* link:https://git.tech.rz.db.de/evita/ansible/molecule[Molecule]
+* link:https://git.tech.rz.db.de/evita/ansible/inventory[inventory]
+* link:https://git.tech.rz.db.de/evita/internal/evita_infrastructure_secrets[evita_infrastructure_secret]
+
+[source,shell]
+----
+git submodule add -b main --name inventory ../../inventory
+git submodule add -b main --name infrastructure_secret ../../../internal/evita_infrastructure_secrets
+git submodule add -b main --name molecule  ../../molecule
+----
+
+Nach der Einbindung sieht die Struktur des Projekts wie folgt aus
+[source=yaml]
+----
+evita_<collection_name>/
+|- <collection_name>/
+|- infrastructure_secret/
+|- inventory/
+|- molecule/
+|- .gitignore
+|- .gitsubmodules
+----
+
+=== 2. Verzeichnisse für Molecule-Test anlegen
+
+Folgende Konfig-Verzeichnisse und notwendige Test-Dateien sind unter dem `evita_<collection-name>` anzulegen:
+
+[source=yaml]
+----
+evita_<collection_name>/
+|- tests
+    |- molecule
+        |- config
+            |- local                    # wird nur für lokalen Test benutzt
+                |- .env.yml             # Enviroment Variablen für lokalen Test
+                |- rufus_vault_master   # "rufus_vault_master" Schlüssel für lokalen Test
+            |- converge.yml             # die zu testenden Rollen werden hier definiert
+            |- verify.yml               # die Testfälle werden hier definiert
+        |- verification/                # Ablageort für einzelne Testfälle
+|- .gitignore
+|- .gitsubmodules
+----
+
+MitHilfe des Shell-Skripts `molecule_local.sh init`  können die Molecules Konfig-Verzeichnisse automatisch erstellt werden.
+
+[source=shell]
+----
+cd evita_<collection-name>/molecule
+./molecule_local.sh init
+----
+
+=== 3. VM-ID und IP der Testinstanz in das Inventory eintragen
+
+Da Molecule die Proxmox-VM als Testinstanz bei der Test-Ausführung aus dem VM-Template mit der ID 1001 klonen wird, muss
+es für jede Testinstanz eine eigene VM-ID sowie IP-Adresse vergeben und ins `inventory` wie folgt gesetzt werden:
+
+* Im link:https://git.tech.rz.db.de/evita/ansible/inventory[inventory] unter `inventory/infrastructure/host_vars/` muss
+eine Datei z. B.: `evita-molecule-test-instance-<collection_name>.yml` mit folgenden Daten erstellt werden.
++
+[source=yaml]
+----
+---
+# eine freie VM-ID setzen
+machine_id: <freie_vm_id>
+
+# Name der zu erstellenden VM setzen
+vm_clone_target_name: "evita-molecule-test-instance-<collection_name>"
+
+# <team_ip> setzen
+vm_ipconfig:
+  "ipconfig0": "ip=192.168.100.{{ machine_id }}/24,gw=192.168.100.1"
+  "ipconfig1": "ip=<team_ip>/24,gw=192.168.100.1"
+
+# default, keine Anpassung notwendig
+vm_name: "{{ vm_clone_target_name }}"
+machine_hostname: "{{ vm_clone_target_name }}"
+ansible_user_name: "{{ lxc_user_encrypted }}"
+ansible_private_key_file: "~/.ssh/id_ansible"
+machine_network:
+  "net0": "virtio,bridge=vmbr100,firewall=1"
+  "net1": "virtio,bridge=vmbr1004,firewall=1,mtu=1450"
+----
+
+* Unter `inventory/infrastructure/hosts.yml` muss der Host für die Testinstanz eingetragen werden.
++
+[source=yaml]
+----
+---
+all:
+  hosts:
+    evita-molecule-test-instance-<collection_name>:
+        ansible_host: <team_ip>
+  children:
+    rufus:
+      children:
+        virtualmachines:
+          evita-molecule-test-instance-<collection_name>:
+    teams:
+      evita:
+          evita-molecule-test-instance-<collection_name>:
+----
+
+* Die Testinstanz benötigt die feste IP. Daher muss IP der Testinstanz noch in DHCP-Leases eingetragen werden.
+
+=== 4. Extra-Einrichtung für lokalen Test
+
+Bei lokalen Molecule-Tests kann es passieren, die VM nach dem Test nicht gelöscht wird ("orphaned" VM). Damit man in
+diesem Fall via Proxmox-Log identifizieren kann, wer die VM erstellt hat und ob sie noch im Einsatz ist, soll es für den
+lokalen Test die individuellen Proxmox Credentials verwendet werden.
+
+Diese Proxmox Credentials müssen anschließend in Environment Variablen gesetzt werden, damit Molecule sie bei der
+Ausführung auslesen kann.
+
+==== 4.1 Proxmox Credentials für lokalen Test erstellen
+
+Die eigenen Proxmox Credentials kann wie folgt erstellt werden:
+
+* In link:https://10.64.248.5:8006/#v1:0:18:4:::::::2[Proxmox] einloggen
+* "Data Center" anklicken
+* Unter "Permissions" auf "API Tokens" klicken
+* Auf "Add" klicken
+** User: den Benutzer auswählen
+** Token ID: "molecule_local" eingeben
+** Privilege Separation: Haken entfernen
+** Auf "Add" klicken und der erstellte Secret kopieren und notieren
+
+==== 4.2 notwendige Environment Variablen setzen
+
+Folgende Environment Variablen müssen in `tests/molecule/config/local/.env.yml` gesetzt werden:
+
+[%header, cols="1,2,4"]
+|===
+| Name
+| Beschreibung
+| Default
+
+| `PROXMOX_USER`
+| Proxmox User
+| verpflichtend, kein Default (z.B. "<bku2>@realm")
+
+| `PROXMOX_USER_TOKEN_ID`
+| Proxmox Token-ID
+| verpflichtend, default ist `molecule_local`
+
+| `PROXMOX_USER_TOKEN_SECRET`
+| Proxmox Token-Secret
+| verpflichtend, kein Default (z.B. "xxxx-xxx-xxxx-xxxxx")
+
+| `PROXMOX_HOST`
+| Proxmox Host
+| 10.64.248.5
+
+| `ANSIBLE_LIMIT`
+| Ansible Host der Testinstanz
+| verpflichtend, kein Default (z.B. "evita-molecule-test-instance-gitlab-runner")
+
+| `EVITA_MOLECULE_CONFIG_PATH`
+| Pfad zum eigenen `config` Folder
+| `../../../tests/molecule/config`
+
+| `EVITA_MOLECULE_INVENTORY_PATH`
+| Pfad zum `inventory` Folder
+| `../../../inventory/infrastructure`
+
+| `ANSIBLE_VAULT_PASSWORD_FILE`
+| Pfad zum `rufus_vault_master` File
+| `../../../tests/molecule/config/local/rufus_vault_master`
+|===
+
+Die Datei `tests/molecule/config/local/.env.yml` sieht wie folgt aus:
+[source=bash]
+----
+# set individual proxmox username (i.e. techuser-evita@pve) and token for local test
+PROXMOX_USER="<bku2>@realm"
+PROXMOX_USER_TOKEN_ID="molecule_local"
+PROXMOX_USER_TOKEN_SECRET: "<token_secret>"
+PROXMOX_HOST: "10.64.248.5"
+
+# set ansible host of molecule test instance (see inventory)
+ANSIBLE_LIMIT: "<ansible_host_of_evita_molecule_test_instance>"
+
+# set (default) path to custom molecule's config folder
+EVITA_MOLECULE_CONFIG_PATH: "../../../tests/molecule/config"
+EVITA_MOLECULE_INVENTORY_PATH: "../../../inventory/infrastructure"
+
+# set (default) path to rufus vault master key
+ANSIBLE_VAULT_PASSWORD_FILE: "../../../tests/molecule/config/local/rufus_vault_master"
+----
+
+==== 4.3 `rufus_vault_master` Schlüssel einfügen
+
+Der Schlüssel `rufus_vault_master` (befindet sich Keepass) muss in die `tests/molecule/config/local/rufus_vault_master`
+eingefügt werden.
+
+Die Permission der Datei muss danach wie folgt angepasst werden: `chmod 444 tests/molecule/config/local/rufus_vault_master`
+
+== Lokales Testen in WSL
+
+. Das lokale Testen mit Molecule erfolgt in `WSL` (siehe link:https://learn.microsoft.com/de-de/windows/wsl/install[Anleitung zur Installation von WSL])
+. (optional) Es wird empfohlen Molecule in einem Python venv zu installieren
+.. Erstellen der virtuellen Umgebung mit `python -m venv <path to virtual environment>`
+.. Aktivieren der virtuellen Umgebung `source <path to virtual environment>/bin/activate`
+. SSH-Private-Key des Users "root" (im Keepass) für die SSH-Verbindung mit Proxmox-VM  in `~/.ssh/id_ansible` hinterlegen
+. Die folgenden Packages sind via `pip install -r requirements.txt` zu installieren:
+* `molecule`
+* `proxmoxer`
+* `requests`
+* `jmespath`
++
+NOTE: Python-Version >= 3.10
++
+. Notwendige Ansible Abhängigkeiten in die `requirements.yml` des Projekts hinzufügen und via
+`ansible-galaxy install -r requirements.yml` installieren
+* evita.basic_setup >= 4.1.0
+* evita.bootstrap >= 3.0.1
+* evita.environment_zip >= 4.1.3
+* evita.proxmox >= 3.0.6
+* community.general >= 9.0.1
+* ansible.posix >= 1.5.4
++
+NOTE: Eine beispielhafte `requirements.yml` Datei ist
+link:https://git.tech.rz.db.de/evita/ansible/molecule/-/blob/main/example-files/example-requirements.yml[hier] zu finden.
++
+. Die zu testenden Ansible-Rollen in `tests/molecule/config/converge.yml` hinzufügen
+. Testfälle in `tests/molecule/config/verify.yml` definieren
+. Molecule-Test mit dem Befehl `./molecule_local.sh run test` ausführen
++
+[source=shell]
+----
+cd evita_<collection-name>/molecule
+./molecule_local.sh run test
+----
++
+[NOTE]
+====
+Mit dem `./molecule_local.sh run <prepare|create|converge|verify|destroy|test|>` wird die
+`tests/molecule/config/local/.env.yml` bei der Ausführung mit geladen.
+Somit werden alle notwendigen Environment Variablen gesetzt.
+
+Wenn der Fehler `bad interpreter: No such file or directory` bei der Ausführung des Shell-Skripts `./molecule_local.sh`
+auftritt, muss einmalig der Befehl `dos2unix molecule_local.sh` ausgeführt werden. Das OS-Paket `dos2unix` kann in WSL
+via `apt install dos2unix` installiert werden.
+====
+
+== Integration in CI
+
+Für die Integration von Molecule in eine Gitlab CI Pipeline sind die folgenden Änderungen notwendig.
+
+=== Anpassungen an der gitlab-ci.yml Datei
+
+. Molecule Integrationstests können einem Projekt hinzugefügt werden, indem die
+link:https://git.tech.rz.db.de/evita/pipelines/jobs/test_ansible_molecule[test_ansible_molecule] Pipeline inkludiert wird.
+Integrationstests sind verfügbar, sobald diese Pipeline im entsprechenden Projekt eingebunden und dort Molecule
+konfiguriert wurde.
++
+. Einbinden der Ansible Molecule Pipeline
++
+[source,yaml]
+----
+include:
+  - https://bahnhub.tech.rz.db.de/artifactory/evita-pipeline-generic-release-local/resolved/release/jobs/test_ansible_molecule/<version>.yaml
+----
++
+. notwendige Variable für den Job `run_integration_tests` setzen
++
+[source,yaml]
+----
+
+run_integration_tests:
+  variables:
+    # ansible host of molecule test instance
+    ANSIBLE_LIMIT: "<evita-molecule-test-instance-of-collection>"
+
+----
+
+'''
+
+link:https://git.tech.rz.db.de/evita/ansible/molecule/-/blob/main/doc/modules/molecule/pages/setup.adoc[Page-Source in GitLab]

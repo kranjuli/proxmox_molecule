@@ -1,0 +1,101 @@
+:reftext: Container
+:navtitle: Container
+
+= {reftext}
+
+Molecule erlaubt die Verwendung von Container-Lösungen wie Docker oder Podman zur Bereitstellung von Testinstanzen. Hierbei werden je nach Konfiguration ein oder mehrere Container erstellt. Die zu testenden Rollen/Collections werden auf diese Container aufgespielt. Anschließend können die gewünschten Integrationstests in diesen Containern durchgeführt werden.
+
+NOTE: Aktuell werden vollwertige VMs anstatt Container als Testinstanzen verwendet, da benötigte `systemd` Funktionalitäten schwer innerhalb eines Containers bereitgestellt werden können. Diese Dokumentation dient zur Beibehaltung des Wissens, das während der Implementation gewonnenen wurde.
+
+== Voraussetzungen
+
+Für die lokale Ausführung gelten die selben Voraussetzungen wie unter xref:molecule:setup.adoc[Molecule Setup] beschrieben. Es wird davon ausgegangen, dass das Projekt entsprechend aufgesetzt ist.
+
+NOTE: Für die Ausführung von Molecule Integrationstests in einer GitLab Pipeline wird ein privilegierter Runner benötigt, um den Service `dind` auszuführen. "Docker in Docker" ist notwendig, falls Molecule selbst in einem Container ausgeführt wird und darin weitere Container als Testinstanzen startet.
+
+== Setup
+
+Für die Verwendung von Docker oder Podman als sog. "driver" gibt es das link:https://github.com/ansible-community/molecule-plugins[molecule-plugins] Repository, welches das Einrichten deutlich vereinfacht.
+
+Nach Installation des entsprechenden Packages (z.B. `pip3 install 'molecule-plugins[docker]'` für die Verwendung von Docker), ist es nicht mehr notwendig eigene `create.yml` und `destroy.yml` Dateien anzulegen. Es werden stattdessen im Hintergrund entsprechende Playbooks aus dem eben installierten Package verwendet. Die gesamte Konfiguration erfolgt über die `molecule.yml` Datei.
+
+Zunächst muss der passende "driver" gewählt werden.
+
+.molecule.yml
+[source,yaml]
+----
+driver:
+  name: docker
+----
+
+Die weiteren Einstellungen unterscheiden sich je nachdem, ob ein bereits fertiges upstream Image verwendet wird, oder ob ein eigenes Image vor dem Durchführen der Integrationstests gebaut werden soll.
+
+=== Prebuilt Image
+
+Bei der Verwendung fertiger upstream Images muss ein entsprechender Pfad zum Herunterladen durch Molecule übergeben werden. Hierzu sind üblicherweise Credentials notwendig, die ebenfalls angegeben werden müssen.
+
+.molecule.yml
+[source,yaml]
+----
+platforms:
+  - name: molecule_test_instance
+    registry:
+      url: evita-docker-release-local.bahnhub.tech.rz.db.de
+      credentials:
+        username: ${GLOBAL_ARTIFACTORY_USER_READONLY}
+        password: ${GLOBAL_ARTIFACTORY_PASSWORD_READONLY}
+    image: evita-docker-release-local.bahnhub.tech.rz.db.de/ubuntu-python:0.0.2@sha256:ecfee85db30a8b67db0a2571be411ef2ab3f9e11a59cbad81495dbf8555066d9
+    pre_build_image: true
+    privileged: true
+----
+
+Für die Verwendung eines bereits gebauten Images muss die Option `pre_built_image: true` gesetzt werden. Die Übergabe der Tech-User Log-In Credentials z.B. für Artifactory kann über Umgebungsvariablen erfolgen, die direkt im Runner gesetzt sind. Lokal können hier die entsprechenden Credentials des Nutzers hinterlegt werden.
+
+NOTE: Bei der Angabe des zu verwendenden Images muss immer auch die volle Domain mit angegeben werden, auch wenn diese bereits im Feld `registry.url` übergeben wurde.
+
+Molecule erlaubt die Angabe einer Liste von Testinstanzen. Die selben Integrationstests können also z.B. auf einer Reihe verschiedener Images ausgeführt werden.
+
+=== Custom Image
+
+Molecule erlaubt es ein bereits bestehendes Basis-Image zu verwenden und dieses mit einem eigenen `Dockerfile` anzupassen. Molecule baut das entsprechende Image dann im "create" Schritt.
+
+.molecule.yml
+[source,yaml]
+----
+driver:
+  name: docker
+platforms:
+  - name: molecule_test_instance
+    registry:
+      url: evita-docker-release-local.bahnhub.tech.rz.db.de
+      credentials:
+        username: ${GLOBAL_ARTIFACTORY_USER_READONLY}
+        password: ${GLOBAL_ARTIFACTORY_PASSWORD_READONLY}
+    image: evita-docker-release-local.bahnhub.tech.rz.db.de/ubuntu-python:0.0.2@sha256:ecfee85db30a8b67db0a2571be411ef2ab3f9e11a59cbad81495dbf8555066d9
+    build:
+      path: .
+      dockerfile: Dockerfile.j2
+    pre_built_image: false
+    privileged: true
+----
+
+Die Konfiguration erfolgt weitestgehend analog zum <<Custom Image>> Abschnitt, jedoch muss der Wert `pre_built_image: false` gesetzt werden, damit Molecule ein neues Image im "create" Schritt erstellt. Zusätzlich muss ein entsprechendes `Dockerfile` übergeben werden, welches die gewünschten Änderungen beinhaltet. Eine Beispieldatei für das Hinzufügen von `python` ist im folgenden aufgeführt.
+
+.Dockerfile.j2
+[source,Dockerfile]
+----
+FROM {{ item.image }}
+
+RUN apt-get update && \
+    apt-get install -y \
+    python3 \
+    python3-apt \
+    && apt-get clean all
+CMD ["/bin/bash"]
+----
+
+NOTE: Der Zugriff auf Dienste im Internet ist aus der Pipeline nicht ohne weiteres möglich. Für die Verwendung von `apt-get` sind z.B. weitere Anpassungen notwendig.
+
+'''
+
+link:https://git.tech.rz.db.de/evita/ansible/molecule/-/blob/main/doc/modules/molecule/pages/container.adoc[Page-Source in GitLab]

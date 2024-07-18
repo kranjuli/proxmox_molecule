@@ -1,0 +1,90 @@
+:reftext: Workflow
+:navtitle: Workflow
+
+= {reftext}
+
+Diese Dokumentation beschreibt den Workflow beim Entwickeln und Testen von Ansible Rollen und Collections mit Hilfe von Molecule.
+
+Die Grundlage der hier beschriebenen Vorgehensweise bildet das sog. "test driven development". Dabei werden zuerst die
+Testfälle und dann die eigentliche Umsetzung geschrieben. Beim Entwickeln neuer Ansible Rollen kann mithilfe von Molecule
+genauso vorgegangen werden.
+
+[NOTE]
+====
+Um die unten aufgeführten Befehle auszuführen, muss zunächst in das passende Verzeichnis gewechselt werden. Angenommen
+der `molecule` Ordner befindet sich unter `./<collection-name>/molecule`, dann funktionieren die Befehle nur ausgehend
+vom Ordner `./<collection-name>`.
+
+Für lokale Ausführung soll das Shell-Skript `./molecule_local.sh run <prepare|create|converge|verify|destroy|test>`
+verwendet werden. Mit diesem Skript wird die `tests/molecule/config/local/.env.yml` bei der Ausführung geladen.
+Somit werden alle notwendigen Environment Variablen gesetzt.
+Alternativ kann der Befehle `molecule -e tests/molecule/config/local/.env.yml <create|converge|verify|destroy|test>`
+====
+
+== Ablauf beim Entwickeln
+
+Das "test driven development" von neuen Ansible Rollen kann wie folgt umgesetzt werden.
+
+. Zunächst wird eine Testinstanz aufgesetzt.
++
+`molecule create`
++
+`./molecule_local.sh run create` (für lokale Ausführung)
++
+. (Optional) Status der Instanz inspizieren
++
+`molecule list`
++
+. Einen Test schreiben (z.B. Assert Task in `/molecule/<scenario-name>/verify.yml`)
++
+. Die zu testende Rolle gegen die Instanz ausführen
++
+`molecule converge`
++
+`./molecule_local.sh run converge` (für lokale Ausführung)
++
+. Den Test ausführen
++
+`molecule verify`
++
+`./molecule_local.sh run verify` (für lokale Ausführung)
+
++
+. Bei Fehlern die Rolle anpassen und den vorherigen Schritt solange wiederholen, bis keine Fehler mehr auftreten.
++
+. Nach beendeter Entwicklung die erstellte Instanz löschen
++
+`molecule destroy`
++
+`./molecule_local.sh run destroy` (für lokale Ausführung)
++
+
+[NOTE]
+====
+Eine Auflistung aller verfügbaren Befehle kann in der
+link:https://ansible.readthedocs.io/projects/molecule/usage/[Molecule Dokumentation] nachgelesen werden.
+====
+== Vollständiger Testlauf
+
+Ein vollständiger Testdurchlauf kann mit dem Befehl `molecule test` (`./molecule_local.sh run test` für lokalen Test)
+durchgeführt werden.
+Dabei wird das gesamte Default Szenario durchlaufen (siehe xref:molecule:scenario.adoc[Abschnitt Szenario]).
+Andere Szenarien können mit dem Befehl `molecule test -s <szenario-name>` gestartet werden.
+
+== Erwartete Warnings
+
+Beim Ausführen von Molecule werden trotz korrekter Konfiguration Warnings ausgegeben. Die folgenden Warnings können
+deshalb ignoriert werden:
+
+* `Skipping unexpected key (molecule) in group (all), only "vars",
+"children" and "hosts" are valid` Molecule erstellt während eines Testlaufs ein eigenes temporäres Inventory.
+Der host `molecule`, welcher in den Molecule Playbooks angegeben wird, ist Ansible deshalb unbekannt. Ohne die Angabe
+des "hosts" funktioniert aber Molecule nicht.
+* `Could not match supplied host pattern, ignoring: molecule` (Selber Grund)
+* `Driver docker does not provide a schema.` Ursache unbekannt. Trotz korrektem Befolgen der Molecule Dokumentation wird
+diese Warnung ausgegeben. Auch im Internet findet sich dafür keine Erklärung.
+* `Skipping xy` Wird ausgegeben, wenn bestimmte Teile eines Molecule Testlaufs deaktiviert oder nicht konfiguriert sind.
+
+'''
+
+link:https://git.tech.rz.db.de/evita/ansible/molecule/-/blob/main/doc/modules/molecule/pages/workflow.adoc[Page-Source in GitLab]

@@ -1,0 +1,39 @@
+---
+prerun: false
+dependency:
+  enabled: false  # Enable for local testing or install requirements manually
+driver:
+  name: default
+# The instances to be tested, and the groups to which the instances belong
+platforms:
+  - name: "${ANSIBLE_LIMIT}"
+provisioner:
+  name: ansible
+  # ansible configs
+  # molecule does not accept properties: "defaults", "ssh_connection" from included config file
+  config_options:
+    defaults:
+      interpreter_python: "auto_silent"
+      localhost_warning: false
+      timeout: "180"
+      force_handlers: true
+      stdout_callback: "community.general.yaml"
+      display_skipped_hosts: false
+      display_ok_hosts: true
+      host_key_checking: false
+      remote_user: root
+    ssh_connection:
+      pipelining: true
+      ssh_args: "-o ServerAliveInterval=100 -o ControlMaster=auto -o ControlPersist=60m -o PreferredAuthentications=publickey"
+  playbooks:
+    # path to custom playbook of converge and verify
+    converge: ${EVITA_MOLECULE_CONFIG_PATH}/converge.yml
+    verify: ${EVITA_MOLECULE_CONFIG_PATH}/verify.yml
+  # inventory of molecule
+  inventory:
+    links:
+      hosts: ${EVITA_MOLECULE_INVENTORY_PATH}/hosts.yml
+      group_vars: ${EVITA_MOLECULE_INVENTORY_PATH}/group_vars
+      host_vars: ${EVITA_MOLECULE_INVENTORY_PATH}/host_vars
+verifier:
+  name: ansible
