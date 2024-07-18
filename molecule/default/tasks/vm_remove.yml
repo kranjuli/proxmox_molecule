@@ -1,0 +1,29 @@
+---
+- name: 'Check that mandatory variables are defined'
+  ansible.builtin.assert:
+    that:
+      - proxmox_node is defined
+      - proxmox_host is defined
+      - proxmox_techuser is defined
+      - proxmox_techuser_token_id is defined
+      - proxmox_techuser_token_secret is defined
+      - vm_remove_id | string | length > 0
+    fail_msg: "some required variables are undefined"
+
+- name: VM is stopped
+  ansible.builtin.include_role:
+    name: evita.proxmox.vm_set_status
+  vars:
+    vm_set_status_target_state: "stopped"
+    vm_set_status_target_id: "{{ vm_remove_id }}"
+    vm_set_status_ignore_nonexisting: true
+
+- name: VM {{ vm_remove_id }} is absent
+  community.general.proxmox_kvm:
+    api_user: "{{ proxmox_techuser }}"
+    api_token_id: "{{ proxmox_techuser_token_id }}"
+    api_token_secret: "{{ proxmox_techuser_token_secret }}"
+    api_host: "{{ proxmox_host }}"
+    vmid: "{{ vm_remove_id }}"
+    state: absent
+  delegate_to: localhost

@@ -1,0 +1,17 @@
+---
+vm_user: "{{ lxc_user }}"
+vm_user_password: "{{ machine_root_password }}"
+vm_user_pubkey: "{{ machine_root_pubkey }}"
+vm_name: "{{ inventory_hostname }}"
+
+# id of the vm template as a source to clone
+source_machine_id: 1001
+# target vm must explicitly be declared as a template; otherwise it will be created as an ordinary vm
+vm_template: false
+
+vm_ostype: "l26"    # Linux 2.6/3.X Kernel
+
+machine_network:
+  "net0": "virtio,bridge=vmbr100,firewall=1"
+vm_ipconfig:
+  "ipconfig0": "ip=192.168.100.{{ machine_id }}/24,gw=192.168.100.1"

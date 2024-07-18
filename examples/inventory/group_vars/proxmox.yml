@@ -1,0 +1,42 @@
+---
+proxmox_node: "rufus"
+proxmox_host: "192.168.100.1"
+proxmox_api_node_uri: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}"
+# default hostname
+machine_hostname: "{{ inventory_hostname }}"
+# storage volume on Rufus
+storage_pool: "local-zfs"
+# root volume
+lxc_mounts:
+  rootfs: "{{ storage_pool }}:{{ lxc_hdd_size }}"
+# machine pool
+machine_pool: "{{ team }}_machines"
+# cpu & memory
+machine_cores: 1
+lxc_cpuunits: 1000
+machine_memory: 512
+machine_swap: 512
+lxc_features: ""
+# OS template
+lxc_ostemplate: "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+
+# per default we don't configure pip
+configure_pip: false
+# Allow recreation of machines
+lxc_create_force: true
+
+# the passwort of the root user in the lxc containers
+machine_root_password: "{{ lxc_password_encrypted }}"
+lxc_user: "{{ lxc_user_encrypted }}"
+# public ssh key to set for the root user
+machine_root_pubkey: "{{ lxc_key_public_encrypted }}"
+# public ssh key to set for the root user
+lxc_private_key: "{{ lxc_key_private_encrypted }}"
+
+proxmox_techuser: "{{ proxmox_tech_user_name_encrypted }}"
+proxmox_techuser_token_id: "{{ proxmox_tech_user_token_id_encrypted }}"
+# the token of the technical proxmox user
+proxmox_techuser_token_secret: "{{ proxmox_tech_user_token_secret_encrypted }}"
+
+# the credentials of private docker registry
+artifactory_docker_auth_config: "{{ artifactory_docker_auth_config_encrypted }}"

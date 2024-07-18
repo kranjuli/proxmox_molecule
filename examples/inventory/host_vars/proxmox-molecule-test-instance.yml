@@ -1,0 +1,18 @@
+---
+machine_id: 197
+
+# name of the cloned vm
+vm_clone_target_name: "proxmox-molecule-test-instance"
+vm_name: "{{ vm_clone_target_name }}"
+machine_hostname: "{{ vm_clone_target_name }}"
+
+ansible_user_name: "{{ lxc_user_encrypted }}"
+ansible_private_key_file: "~/.ssh/id_ansible"
+
+machine_network:
+  "net0": "virtio,bridge=vmbr100,firewall=1"
+  "net1": "virtio,bridge=vmbr1004,firewall=1,mtu=1450"
+
+vm_ipconfig:
+  "ipconfig0": "ip=192.168.100.{{ machine_id }}/24,gw=192.168.100.1"
+  "ipconfig1": "ip=192.168.4.218/24,gw=192.168.100.1"

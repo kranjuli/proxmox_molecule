@@ -6,6 +6,10 @@ Improving molecule's playbooks to create and remove test instance from Proxmox V
 
 TODOs
 
+# inventory
+
+TODOs
+
 ## local test
 
 TODOS
