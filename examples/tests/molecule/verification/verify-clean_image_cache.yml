@@ -1,0 +1,19 @@
+---
+- name: Pull docker images to exceed the ducuum threshold
+  docker_image:
+    name: item.name
+    tag: item.tag
+    source: pull
+  loop:
+    - { name: 'evita-docker-release-local.bahnhub.tech.rz.db.de/ubuntu', tag: '2.0.4' }
+    - { name: 'evita-docker-release-local.bahnhub.tech.rz.db.de/ubuntu-python', tag: '0.0.12' }
+
+- name: Inspect images
+  community.docker.docker_image_info:
+    name: #If no name is specified a list of all images is returned
+  register: _docker_images_info
+
+- name: Verify that only one image is left after docuum service cleaned the chache
+  ansible.builtin.assert:
+    that:
+      - result.images | length == 1

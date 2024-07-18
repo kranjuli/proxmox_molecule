@@ -1,0 +1,13 @@
+---
+- name: Verify
+  hosts: "{{ lookup('env', 'ANSIBLE_LIMIT') }}"
+  gather_facts: true
+  tasks:
+    # Split verify.yml into separate files for each role to be tested to  remain readable
+    - name: Include verification files for the install_runner role
+      ansible.builtin.include_tasks:
+        file: ../verification/verify-install_runner.yml
+
+    # - name: Include verification files for the clean_image_cache role
+    #  ansible.builtin.include_tasks:
+    #    file: ../verification/verify-clean_image_cache.yml

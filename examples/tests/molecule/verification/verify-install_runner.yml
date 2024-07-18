@@ -1,0 +1,12 @@
+---
+# Check apt repository paths for docker and gitlab-runner (needs to point to Artifactory).
+# Ansible slurp returns file contents encoded in base64 and with and added new line character.
+# The filters 'b64decode' and 'trim' take care of this.
+- name: Check Artifactory repository paths
+  ansible.builtin.assert:
+    that: _apt_repository_paths.results.{{ index }}.content | b64decode | trim == item
+  loop:
+    - "deb https://bahnhub.tech.rz.db.de/artifactory/docker-deb-remote/ubuntu {{ ansible_distribution_release }} stable"
+    - "deb https://bahnhub.tech.rz.db.de/artifactory/gitlab-debian-remote/runner/gitlab-runner/ubuntu {{ ansible_distribution_release }} main"
+  loop_control:
+    index_var: index

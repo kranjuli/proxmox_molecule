@@ -1,0 +1,16 @@
+---
+# 'become' is necessary because the ansible user has no permissions to execute apt-get.
+- name: Converge
+  hosts: "{{ lookup('env', 'ANSIBLE_LIMIT') }}"
+  gather_facts: true
+  become: true
+  vars:
+    clean_image_cache_max_gb: 0.2
+    vm_created: true
+  roles:
+    - evita.basic_setup.repositories
+    - evita.gitlab_runner.install_runner
+    # - evita.gitlab_runner.secret_injection
+    # - evita.gitlab_runner.setup_runner
+    - evita.gitlab_runner.clean_image_cache
+    # - evita.gitlab_runner.clean_docker_volumes
